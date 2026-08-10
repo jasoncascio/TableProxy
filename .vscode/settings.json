@@ -1,10 +1,16 @@
 {
   "git.enabled": true,
-  "eslint.alwaysShowStatus": true,
-  "editor.formatOnSave": false,
-  "eslint.autoFixOnSave": true,
   "files.autoSave": "onFocusChange",
-  "eslint.validate": [
-    "javascript"
-  ]
+
+  // Left off deliberately, as it was before. `npm run format` is the
+  // project-wide equivalent. Flip to true if you'd rather Prettier ran on save.
+  "editor.formatOnSave": false,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+
+  // Replaces "eslint.autoFixOnSave", which the ESLint extension removed.
+  // "eslint.alwaysShowStatus" and "eslint.validate" are gone too — flat config
+  // resolves what to lint on its own.
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit"
+  }
 }

@@ -1,7 +1,8 @@
 {
   "timeZone": "America/New_York",
   "dependencies": {
-    "enabledAdvancedServices": [{
+    "enabledAdvancedServices": [
+      {
         "userSymbol": "Gmail",
         "serviceId": "gmail",
         "version": "v1"
@@ -12,7 +13,8 @@
         "version": "v2"
       }
     ],
-    "libraries": [{
+    "libraries": [
+      {
         "userSymbol": "FirebaseApp",
         "libraryId": "1hguuh4Zx72XVC1Zldm_vTtcUUKUA6iBUOoGnJUWLfqDWx5WlOJHqYkrt",
         "version": "29"
