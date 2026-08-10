@@ -46,8 +46,9 @@ being rebuilt per row. That mattered: it defines one property per column per req
 a 50-column sheet costs 50 definitions for a query touching only `value` and up to 450 if all nine
 are in play. Rebuilding that for each of 5,000 rows would have dominated the run.
 
-That optimization has a consequence I don't think I fully appreciated at the time. **Every row in a
-query sees the same object.** Not an equivalent one — the same one:
+That optimization has a consequence that had to be handled, and this is the one sharp edge I did see
+coming. **Every row in a query is handed to you as the same object.** Not an equivalent one — the
+same one:
 
 ```js
 const seen = [];
@@ -62,9 +63,14 @@ seen.every((o) => o === seen[0]); // true
 
 Which means anything you keep a reference to during a query is a live view of wherever the cursor
 happens to be now, not the row you saw it on. That's why `process-query.js` snapshots with
-`clone(recordProxy)` before pushing a result. Drop that single call and every record returned from a
-query would report the last row's data, three times over — a bug that would look like a data problem
-rather than an aliasing problem, and would be miserable to find.
+`clone(recordProxy)` before pushing a result — a call that has been there since April 2019. Drop it
+and every record returned from a query would report the last row's data, three times over — a bug
+that would look like a data problem rather than an aliasing problem, and would be miserable to find.
+
+What the clone protects is the library's own result path. A reference the caller keeps inside their
+own query function is still live, and nothing here can stop that — the object has to stay mutable to
+be written through. That part is a documented property of the design rather than a bug, but it is
+the half that isn't defended.
 
 Records also carry a reserved `' index '` property holding their row index, defined before the
 columns are. The leading and trailing spaces are the point: header names are trimmed on the way in,
@@ -224,8 +230,9 @@ cell, for writes) is pure waste — and hoisting a branch out of a hot loop is a
 want. I later learned this shape is usually called the Strategy pattern.
 
 The discomfort in that comment was also right, for a different reason than I understood at the time.
-Six numbered near-identical methods with no test coverage is a place bugs hide, and one did: the
-`READ_LEVEL_ROW` write paths never worked at all. See below.
+Nine numbered near-identical methods — `getColumnByIndex1`–`2`, `updateColumnByIndex1`–`4`,
+`setRowIndex1`–`3` — with no test coverage is a place bugs hide, and one did: the `READ_LEVEL_ROW`
+write paths never worked at all. See below.
 
 The same instinct shows up again in `process-query.js`, which builds the per-row evaluator once from
 an immediately-invoked function and then loops over a closure with no branches left in it:
@@ -387,12 +394,12 @@ And the honest conclusion, which is the reason this section is worth writing at 
 
 **Arriving at the shape is the easy half.** What I was missing wasn't the diagram, it was the
 discipline that comes with it. A Strategy implementation done properly has one interface that every
-strategy satisfies; mine was six numbered methods with nothing enforcing that they behaved alike, and
-two of them — the `READ_LEVEL_ROW` write paths — turned out never to have worked. A shared contract,
-or simply a test per strategy, would have caught that in 2019 instead of 2026. My Unit of Work has no
-transaction boundary and no rollback: if `capWrite()` fails halfway, the sheet is left half-written
-and nothing knows. The literature doesn't just hand you the structure, it hands you the failure modes
-other people already hit.
+strategy satisfies; mine was nine numbered methods with nothing enforcing that they behaved alike.
+The read side grew a row-mode variant and the write side never did, so both `READ_LEVEL_ROW` branches
+turned out never to have worked. A shared contract, or simply a test per strategy, would have caught
+that in 2019 instead of 2026. My Unit of Work has no transaction boundary and no rollback: if
+`capWrite()` fails halfway, the sheet is left half-written and nothing knows. The literature doesn't
+just hand you the structure, it hands you the failure modes other people already hit.
 
 ---
 
