@@ -218,6 +218,10 @@ that was never built and never run.
 The design survived intact. The record proxy, the attribute model, and the read/write levels are
 unchanged in shape, because they were the right ideas.
 
+**[DESIGN.md](./DESIGN.md)** goes through the decisions in detail — how queries are inspected to
+avoid fetching attributes they never touch, why batching is an explicit setting, and which choices
+turned out to be wrong.
+
 ## Prior art
 
 [Tamotsu](https://github.com/itmammoth/Tamotsu) is a good Sheets ORM if you only need cell values.
