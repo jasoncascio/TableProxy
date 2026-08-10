@@ -8,6 +8,22 @@ describe('smoke', () => {
     expect(typeof global.$initUtils).toBe('function');
   });
 
+  it('registers the utilities without clobbering the library global', () => {
+    // The unnamed $initUtils branch used to register the utilities as
+    // `TableProxy`, so initializing both with defaults lost mount().
+    delete global.Utils;
+    delete global.TableProxy;
+
+    global.$initTableProxy();
+    global.$initUtils();
+
+    expect(typeof global.TableProxy.mount).toBe('function');
+    expect(typeof global.Utils.getShape).toBe('function');
+
+    delete global.Utils;
+    delete global.TableProxy;
+  });
+
   it('mounts against the fake and reads the header row', () => {
     installBasicSheet();
     global.$initTableProxy('TP');

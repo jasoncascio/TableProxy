@@ -33,7 +33,10 @@ const TableProxy = () => {
         mainCursor,
       };
 
-      if (!instanceOptions.uniqueIdColumnName) {
+      // Guarded on `uniqueIdColumnName`, a property that has never existed, so
+      // the default always won and an idColumnName passed to mount() was
+      // silently discarded.
+      if (!instanceOptions.idColumnName) {
         instanceOptions.idColumnName = sheetAccessor.getDefaultIdColumn();
       }
 
@@ -60,9 +63,9 @@ const TableProxy = () => {
 
       Object.defineProperty(api, 'update', {
         enumerable: true,
-        value: (query, withRecords) => {
+        value: (query) => {
           const timer = new Timer(`API update`);
-          const queryReturn = runQuery(core, query, false, withRecords);
+          const queryReturn = runQuery(core, query, false);
           mainCursor.isDirty = true;
           lastResults
             .clear()
@@ -240,7 +243,10 @@ const TableProxy = () => {
       Object.defineProperty(api, 'setRows', {
         enumerable: true,
         value: (indices, oneIndexed) => {
-          const offset = oneIndexed === true ? 1 : 0;
+          // 1-based sheet positions convert to internal indices by SUBTRACTING
+          // one. This added it, so the flag moved the selection the wrong way
+          // and disagreed with getSelectedIndices(true), its own inverse.
+          const offset = oneIndexed === true ? -1 : 0;
           mainCursor.setToIndices(
             (isArray(indices) ? indices : [indices]).map((index) => index + offset),
           );
@@ -306,14 +312,11 @@ const TableProxy = () => {
       /**
        * Establish options setters
        */
+      // No setSheetName: mount resolves the sheet, and the InstanceOptions
+      // setter refuses to change one that is already resolved, so the method
+      // could only ever throw. SheetAccessor caches the header row and the
+      // sheet shape at construction anyway — mount a second table instead.
       Object.defineProperties(api, {
-        setSheetName: {
-          enumerable: true,
-          value: (input) => {
-            instanceOptions.sheetName = input;
-            return api;
-          },
-        },
         setColumnFilter: {
           enumerable: true,
           value: (input) => {
@@ -404,11 +407,9 @@ const $initTableProxy = function $initTableProxy(asName) {
 };
 global.$initTableProxy = $initTableProxy;
 
+// The unnamed branch used to register the utilities as `TableProxy`, which
+// clobbered the library global if both initializers ran with defaults.
 const $initUtils = function $initUtils(asName) {
-  if (asName) {
-    global[asName] = Utils;
-  } else {
-    global.TableProxy = Utils;
-  }
+  global[asName || 'Utils'] = Utils;
 };
 global.$initUtils = $initUtils;

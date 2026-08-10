@@ -35,6 +35,24 @@ describe('mount', () => {
     expect(table.getOptions().sheetName).toBe('Test');
   });
 
+  it('keeps an idColumnName passed in the options object', () => {
+    // The default-id guard tested a property that never existed, so the first
+    // header cell overwrote whatever was passed here.
+    expect(mount({ sheetName: 'Test', idColumnName: 'C3' }).getOptions().idColumnName).toBe('C3');
+  });
+
+  it('matches writeRecords on an idColumnName from the options object', () => {
+    mount({ sheetName: 'Test', idColumnName: 'C3' }).writeRecords([
+      { C3: { value: '4-3 Value' }, C4: { value: 'BY OPTION' } },
+    ]);
+    expect(env.sheetData('Test').read('value', 4, 4, 1, 1)).toEqual([['BY OPTION']]);
+  });
+
+  it('does not expose a sheet name setter', () => {
+    // It could only ever throw: mount has already resolved the sheet.
+    expect(mount().setSheetName).toBeUndefined();
+  });
+
   it('rejects a sheet with duplicate headers', () => {
     installBasicSheet({
       values: [
@@ -276,6 +294,41 @@ describe('insertRow / deleteRow', () => {
 
   it('refuses to delete the header row', () => {
     expect(() => mount().deleteRow(1)).toThrow(/unable to delete the header row/);
+  });
+});
+
+describe('setRows', () => {
+  beforeEach(() => {
+    env = installBasicSheet();
+  });
+
+  it('selects by zero-based index', () => {
+    const table = mount().setRows([1, 3]);
+    expect(table.getSelectedIndices()).toEqual([1, 3]);
+    expect(table.selectionLength()).toBe(2);
+  });
+
+  it('round-trips 1-based positions with getSelectedIndices', () => {
+    // The oneIndexed flag added one instead of subtracting it, so it moved the
+    // selection away from the rows the caller named.
+    const table = mount().setRows([3, 4], true);
+    expect(table.getSelectedIndices(true)).toEqual([3, 4]);
+    expect(table.getSelectedIndices()).toEqual([2, 3]);
+  });
+
+  it('updates only the rows named by position', () => {
+    mount()
+      .setRows([4], true)
+      .update((r) => {
+        r.C2.value = 'ROW 4';
+      });
+    const data = env.sheetData('Test');
+    expect(data.read('value', 4, 2, 1, 1)).toEqual([['ROW 4']]);
+    expect(data.read('value', 3, 2, 1, 1)).toEqual([['3-2 Value']]);
+  });
+
+  it('rejects non-numeric input', () => {
+    expect(() => mount().setRows(['2'])).toThrow(/only numbers/);
   });
 });
 
