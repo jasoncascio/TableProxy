@@ -413,6 +413,15 @@ no setter, while `index.js` assigned to it in four places. In strict mode that t
 assignments came from the last commit I made in 2019 — a commit that was never built and never run,
 which I only found out seven years later by building it.
 
+**Four more surfaced while writing the API reference.** Going method by method for the README turned
+up an `idColumnName` option that `mount` threw away (the guard tested `uniqueIdColumnName`, a
+property that has never existed), a `setSheetName` that could only ever throw once the sheet was
+resolved, a `setRows(indices, true)` that added one where converting a 1-based position needs to
+subtract it, and a bare `$initUtils()` that registered the utilities as `TableProxy`, clobbering the
+library. None of these was found by using the library — they were found by trying to write down what
+each method does. Tests came first and caught the deep ones; the shallow, never-called ones waited
+for prose.
+
 **`READ_LEVEL_ROW` could read but never write.** In row mode the payload holds one row at index 0,
 but every write strategy indexed it by the absolute sheet row number, so it dereferenced `undefined`
 every time. Half the strategy matrix had never been executed.
