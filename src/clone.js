@@ -3,9 +3,11 @@
  * @desc taken from https://stackoverflow.com/questions/728360/how-do-i-correctly-clone-a-javascript-object
  */
 
+import { typeTag } from './utilities.js';
+
 export default function clone(input) {
   let copy;
-  const toStringType = toString.call(input);
+  const toStringType = typeTag(input);
   switch (toStringType) {
     case '[object Undefined]':
     case '[object Null]':
@@ -15,7 +17,7 @@ export default function clone(input) {
       copy = input;
       break;
     case '[object Array]':
-      copy = input.map(i => {
+      copy = input.map((i) => {
         return clone(i);
       });
       break;
@@ -24,7 +26,7 @@ export default function clone(input) {
         copy = input;
       } else {
         copy = {};
-        Object.keys(input).forEach(property => {
+        Object.keys(input).forEach((property) => {
           copy[property] = clone(input[property]);
         });
       }

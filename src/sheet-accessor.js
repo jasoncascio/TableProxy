@@ -3,13 +3,13 @@
  * @return {SheetAccessor}
  */
 
-import InstanceOptions from './instance-options';
-import { Map, getDuplicates } from './map-unique';
-import { isNumeric, inArray } from './utilities';
-import { getSelectedRowIndices } from './sheets-utilities';
-import { DataPayload, AttributesSet } from './data-payload';
-import clone from './clone';
-import { TOP, DEFAULT_ATTRIBUTE, SUPPORTED_ATTRIBUTES } from './CONSTANTS';
+import InstanceOptions from './instance-options.js';
+import { KeyedMap, getDuplicates } from './keyed-map.js';
+import { isNumeric, inArray } from './utilities.js';
+import { getSelectedRowIndices } from './sheets-utilities.js';
+import { DataPayload, AttributesSet } from './data-payload.js';
+import clone from './clone.js';
+import { TOP, DEFAULT_ATTRIBUTE, SUPPORTED_ATTRIBUTES } from './CONSTANTS.js';
 
 export default class SheetAccessor {
   constructor(instanceOptions) {
@@ -43,23 +43,47 @@ export default class SheetAccessor {
     this.getDataIndex = null;
 
     /**
+     * Cached sheet shape.
+     * @desc getDataRange() is a round trip to the Sheets service. The old code
+     * @desc called it inside range.getRow() and range.getColumn(), so a
+     * @desc row-at-a-time write paid an extra round trip per row purely to
+     * @desc re-learn a column count that cannot change mid-iteration.
+     * @desc Invalidated by insertRow/deleteRow below.
+     */
+    this.shape = null;
+    this.getShape = () => {
+      if (this.shape === null) {
+        const dataRange = this.sheet.getDataRange();
+        this.shape = {
+          numRows: dataRange.getNumRows(),
+          numColumns: dataRange.getNumColumns(),
+        };
+      }
+      return this.shape;
+    };
+    this.invalidateShape = () => {
+      this.shape = null;
+      return this;
+    };
+
+    /**
      * find headerRowIndex, headerColumnIndex if headerAnchorToken
+     * @desc One getNotes() for the whole sheet, scanned in memory. This used to
+     * @desc issue one getRange().getNotes() PER ROW until the token was found,
+     * @desc so a miss cost one round trip for every row in the sheet.
      */
     if (instanceOptions.headerAnchorToken) {
-      const dataRange = this.sheet.getDataRange();
-      const rowCount = dataRange.getNumRows();
-      const columnCount = dataRange.getNumColumns();
-      for (let rowIndex = 0; rowIndex < rowCount; rowIndex += 1) {
-        this.sheet
-          .getRange(rowIndex + 1, 1, 1, columnCount)
-          .getNotes()[0]
-          .forEach((note, columnIndex) => {
-            if (note.indexOf(instanceOptions.headerAnchorToken) !== -1) {
-              this.headerRowIndex = rowIndex;
-              this.headerColumnIndex = columnIndex;
-              rowIndex = rowCount;
-            }
-          });
+      const allNotes = this.sheet.getDataRange().getNotes();
+      const { headerAnchorToken } = instanceOptions;
+      findAnchor: for (let rowIndex = 0; rowIndex < allNotes.length; rowIndex += 1) {
+        const noteRow = allNotes[rowIndex];
+        for (let columnIndex = 0; columnIndex < noteRow.length; columnIndex += 1) {
+          if (noteRow[columnIndex].indexOf(headerAnchorToken) !== -1) {
+            this.headerRowIndex = rowIndex;
+            this.headerColumnIndex = columnIndex;
+            break findAnchor;
+          }
+        }
       }
     }
 
@@ -70,7 +94,7 @@ export default class SheetAccessor {
     const duplicates = getDuplicates(this.headerRow);
     if (duplicates.length > 0) {
       throw new Error(
-        `Sheet "${this.sheet.getName()}" has duplicate column headers... ${duplicates.join(', ')}`
+        `Sheet "${this.sheet.getName()}" has duplicate column headers... ${duplicates.join(', ')}`,
       );
     }
 
@@ -81,37 +105,36 @@ export default class SheetAccessor {
       getCell: (rowIndex, columnIndex) => {
         return this.sheet.getRange(rowIndex + 1, columnIndex + 1);
       },
-      getRow: rowIndex => {
-        return this.sheet.getRange(rowIndex + 1, 1, 1, this.sheet.getDataRange().getNumColumns());
+      getRow: (rowIndex) => {
+        return this.sheet.getRange(rowIndex + 1, 1, 1, this.getShape().numColumns);
       },
       getColumn: (columnIndex, startRowIndex) => {
-        const dataRange = this.sheet.getDataRange();
         const startRowIndx = isNumeric(startRowIndex) ? startRowIndex : 0;
         return this.sheet.getRange(
           startRowIndx + 1,
           columnIndex + 1,
-          dataRange.getNumRows() - startRowIndx,
-          1
+          this.getShape().numRows - startRowIndx,
+          1,
         );
       },
       getAll: (startRowIndex, startColumnIndex) => {
-        const dataRange = this.sheet.getDataRange();
+        const shape = this.getShape();
         const startRowIndx = isNumeric(startRowIndex) ? startRowIndex : 0;
         const startColumnIndx = isNumeric(startColumnIndex) ? startColumnIndex : 0;
 
         return this.sheet.getRange(
           startRowIndx + 1,
           startColumnIndx + 1,
-          dataRange.getNumRows() - startRowIndx,
-          dataRange.getNumColumns() - startColumnIndx
+          shape.numRows - startRowIndx,
+          shape.numColumns - startColumnIndx,
         );
       },
       getAllRecords: () => {
         return this.range.getAll(this.headerRowIndex + 1, 0);
       },
-      getRecordsColumn: columnIndex => {
+      getRecordsColumn: (columnIndex) => {
         return this.range.getColumn(columnIndex, this.headerRowIndex + 1);
-      }
+      },
     };
 
     /**
@@ -126,13 +149,13 @@ export default class SheetAccessor {
       fontsize: { get: 'getFontSizes', set: 'setFontSizes' },
       fontstyle: { get: 'getFontStyles', set: 'setFontStyles' },
       fontweight: { get: 'getFontWeights', set: 'setFontWeights' },
-      numberformat: { get: 'getNumberFormats', set: 'setNumberFormats' }
+      numberformat: { get: 'getNumberFormats', set: 'setNumberFormats' },
     };
-    Object.keys(mapping).forEach(attribute => {
+    Object.keys(mapping).forEach((attribute) => {
       this[attribute] = {};
       const getSetMapping = mapping[attribute];
-      Object.keys(getSetMapping).forEach(getSet => {
-        Object.keys(this.range).forEach(rangeMethodName => {
+      Object.keys(getSetMapping).forEach((getSet) => {
+        Object.keys(this.range).forEach((rangeMethodName) => {
           this[attribute][getSet + rangeMethodName.substr(3)] = (...args) => {
             const rangeMethod = this.range[rangeMethodName];
             const range = rangeMethod(...args);
@@ -148,10 +171,10 @@ export default class SheetAccessor {
     /**
      * flesh out getColumnIndex, columnExists getDefaultIdColumn getHeaderRow methods
      */
-    this.getColumnIndex = columnName => {
+    this.getColumnIndex = (columnName) => {
       return this.headerRow.indexOf(columnName);
     };
-    this.columnExists = columnName => {
+    this.columnExists = (columnName) => {
       return this.getColumnIndex(columnName) !== -1;
     };
     this.getDefaultIdColumn = () => {
@@ -165,8 +188,8 @@ export default class SheetAccessor {
      * flesh out getAllRecordIndexer and getSelectedRecordIndexer method
      */
     this.getAllRecordIndexer = () => {
-      const indexer = new Map();
-      const numRows = this.range.getAll().getNumRows();
+      const indexer = new KeyedMap();
+      const { numRows } = this.getShape();
       let i = this.headerRowIndex + 1;
       while (i < numRows) {
         indexer.set(i);
@@ -178,7 +201,7 @@ export default class SheetAccessor {
       return getSelectedRowIndices().reduce((indexer, i) => {
         indexer.set(i);
         return indexer;
-      }, new Map());
+      }, new KeyedMap());
     };
 
     /**
@@ -200,34 +223,32 @@ export default class SheetAccessor {
       return new DataPayload(
         requestedAttributesSet.values.reduce((dataObject, attribute) => {
           if (isNumeric(rowIndex)) {
-            // eslint-disable-next-line no-param-reassign
             dataObject[attribute] = this[attribute].getRow(rowIndex);
           } else {
-            // eslint-disable-next-line no-param-reassign
             dataObject[attribute] = this[attribute].getAll();
           }
           return dataObject;
         }, {}),
         this.headerRowIndex,
         this.headerColumnIndex,
-        this.headerRow
+        this.headerRow,
       );
     };
 
     /**
      * flesh out insertRows and deleteRows
      */
-    this.insertRow = topOrBottom => {
-      const position =
-        topOrBottom === TOP ? this.headerRowIndex + 1 : this.sheet.getDataRange().getNumRows();
+    this.insertRow = (topOrBottom) => {
+      const position = topOrBottom === TOP ? this.headerRowIndex + 1 : this.getShape().numRows;
       this.sheet.insertRowAfter(position);
+      this.invalidateShape();
       return position;
     };
 
-    this.deleteRow = rowPosition => {
-      const position =
-        rowPosition === undefined ? this.sheet.getDataRange().getNumRows() : rowPosition;
+    this.deleteRow = (rowPosition) => {
+      const position = rowPosition === undefined ? this.getShape().numRows : rowPosition;
       this.sheet.deleteRow(position);
+      this.invalidateShape();
       return position;
     };
 
@@ -255,7 +276,7 @@ export default class SheetAccessor {
 
         const data = this[attr].getRecordsColumn(columnIndex);
         const dataLength = data.length;
-        dataIndex = new Map();
+        dataIndex = new KeyedMap();
         data.forEach((item, rowIndex) => {
           dataIndex.set(item[0], rowIndex + this.headerRowIndex + 1 + offset);
         });

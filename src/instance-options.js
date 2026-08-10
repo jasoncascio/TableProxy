@@ -3,8 +3,7 @@
  * @return {InstanceOptions}
  */
 
-import { AttributesSet } from './data-payload';
-import { expSpreadsheetApp as SpreadsheetApp } from './simulation-utils';
+import { AttributesSet } from './data-payload.js';
 import {
   VALID_READ_LEVELS,
   READ_LEVEL_ROW,
@@ -15,8 +14,7 @@ import {
   DEFAULT_WRITE_LEVEL,
   DEFAULT_ATTRIBUTE,
   SUPPORTED_ATTRIBUTES,
-  IS_TEST_MODE
-} from './CONSTANTS';
+} from './CONSTANTS.js';
 import {
   isString,
   isArray,
@@ -25,14 +23,10 @@ import {
   inArray,
   isFunction,
   isNumeric,
-  isDate1
-} from './utilities';
-import { log, isSupportedType } from './sheets-utilities';
-import clone from './clone';
-
-if (IS_TEST_MODE) {
-  global.SpreadsheetApp = SpreadsheetApp;
-}
+  isDate1,
+} from './utilities.js';
+import { log, isSupportedType } from './sheets-utilities.js';
+import clone from './clone.js';
 
 export default class InstanceOptions {
   constructor(sheetNameOrOptions, headerAnchorToken) {
@@ -57,13 +51,12 @@ export default class InstanceOptions {
 
   set headerAnchorToken(input) {
     if (this.pvt_headerAnchorToken !== null) {
-      throw new Error(`headerAnchorToken can only be once.`);
+      throw new Error(`headerAnchorToken can only be set once.`);
     }
     if (input && !isString(input)) {
       throw new TypeError(`headerAnchorToken must be a string.`);
     }
     this.pvt_headerAnchorToken = input || null;
-    return this.pvt_headerAnchorToken;
   }
 
   get headerAnchorToken() {
@@ -80,7 +73,7 @@ export default class InstanceOptions {
     }
     if (this.pvt_spreadsheet) {
       throw new Error(
-        `spreadsheetId was already set to ${this.pvt_spreadsheetId} and cannot be changed.`
+        `spreadsheetId was already set to ${this.pvt_spreadsheetId} and cannot be changed.`,
       );
     }
     if (input === 'TPACTIVE') {
@@ -102,32 +95,40 @@ export default class InstanceOptions {
     if (this.pvt_sheet) {
       throw new Error(`sheetName was already set to ${this.pvt_sheetName} and cannot be changed.`);
     }
+    let sheet;
     try {
-      this.pvt_sheet = this.pvt_spreadsheet.getSheetByName(input);
+      sheet = this.pvt_spreadsheet.getSheetByName(input);
     } catch (e) {
-      throw new Error(`set sheetName exception: ${e}.`);
+      throw new Error(`set sheetName exception: ${e}.`, { cause: e });
     }
+    // getSheetByName returns null for an unknown name rather than throwing.
+    // Without this check the failure surfaced much later as a null dereference
+    // inside SheetAccessor ("Cannot read properties of null").
+    if (!sheet) {
+      throw new Error(`sheet named "${input}" does not exist in this spreadsheet.`);
+    }
+    this.pvt_sheet = sheet;
     this.pvt_sheetName = input;
-    return this.pvt_sheetName;
   }
 
   get columnFilter() {
     return clone(this.pvt_columnFilter);
   }
 
+  /**
+   * @desc Setting a filter REPLACES the previous one. The array branch used to
+   * @desc append while the scalar branch replaced, so calling this twice with
+   * @desc arrays silently accumulated columns.
+   */
   set columnFilter(input) {
     if (isArray(input)) {
-      clone(input)
-        .filter(i => isSupportedType(i))
-        .map(i => (isString(i) ? i.trim() : i))
-        .forEach(i => {
-          this.pvt_columnFilter.push(i);
-        });
+      this.pvt_columnFilter = clone(input)
+        .filter((i) => isSupportedType(i))
+        .map((i) => (isString(i) ? i.trim() : i));
     } else if (isSupportedType(input)) {
       this.pvt_columnFilter = [isString(input) ? input.trim() : input];
     }
     this.pvt_applyColumnFilter = this.pvt_columnFilter.length > 0;
-    return this.pvt_columnFilter;
   }
 
   get applyColumnFilter() {
@@ -145,12 +146,11 @@ export default class InstanceOptions {
   set exportAttributes(input) {
     const attributes = isArray(input) ? input : [input];
     this.pvt_exportAttributes.flush();
-    attributes.forEach(attribute => {
+    attributes.forEach((attribute) => {
       if (attribute !== undefined) {
         this.pvt_exportAttributes.push(attribute);
       }
     });
-    return this.pvt_exportAttributes;
   }
 
   get readLevel() {
@@ -162,7 +162,6 @@ export default class InstanceOptions {
       throw new Error(`readLevel must be one of ${VALID_READ_LEVELS.toString()} received ${input}`);
     }
     this.pvt_readLevel = input;
-    return this.pvt_readLevel;
   }
 
   get writeLevel() {
@@ -176,11 +175,10 @@ export default class InstanceOptions {
   set writeLevel(input) {
     if (!inArray(input, VALID_WRITE_LEVELS)) {
       throw new Error(
-        `writeLevel must be one of ${VALID_WRITE_LEVELS.toString()} received ${input}`
+        `writeLevel must be one of ${VALID_WRITE_LEVELS.toString()} received ${input}`,
       );
     }
     this.pvt_writeLevel = input;
-    return this.pvt_writeLevel;
   }
 
   get autoResizeColumns() {
@@ -192,7 +190,6 @@ export default class InstanceOptions {
       throw new TypeError(`autoResizeColumns must be a boolean.`);
     }
     this.pvt_autoResizeColumns = input;
-    return this.pvt_autoResizeColumns;
   }
 
   get computedProperties() {
@@ -203,13 +200,12 @@ export default class InstanceOptions {
     if (!isObject(input)) {
       throw new TypeError(`computedProperties must be an object.`);
     }
-    Object.keys(input).forEach(key => {
+    Object.keys(input).forEach((key) => {
       if (!isFunction(input[key])) {
         throw new Error(`non-function provided for computedProperty value.`);
       }
     });
     this.pvt_computedProperties = input;
-    return this.pvt_computedProperties;
   }
 
   get idColumnName() {
@@ -221,7 +217,6 @@ export default class InstanceOptions {
       throw new TypeError(`idColumnName value must be string, number, date.`);
     }
     this.pvt_idColumnName = isString(input) ? input.trim() : input;
-    return this;
   }
 
   get idAttributeName() {
@@ -236,7 +231,6 @@ export default class InstanceOptions {
       throw new Error(`${input} is not a valid idAttributeName.`);
     }
     this.pvt_idAttributeName = input;
-    return this;
   }
 
   get sheet() {
@@ -265,7 +259,7 @@ export default class InstanceOptions {
       } else {
         this.spreadsheetId = 'TPACTIVE';
       }
-      Object.keys(sheetNameOrOptions).forEach(key => {
+      Object.keys(sheetNameOrOptions).forEach((key) => {
         if (key.indexOf('pvt_') === -1 && key.indexOf('spreadsheetId') === -1) {
           this[key] = sheetNameOrOptions[key];
         }

@@ -2,19 +2,19 @@
  * Operations
  */
 
-import { UniqueSet } from './map-unique';
-import QueryDriver from './query-driver';
-import processQuery from './process-query';
-import { inArray, getType, isObject } from './utilities';
-import clone from './clone';
+import { UniqueKeySet } from './keyed-map.js';
+import QueryDriver from './query-driver.js';
+import processQuery from './process-query.js';
+import { inArray, getType, isObject } from './utilities.js';
+import clone from './clone.js';
 import {
   INDEX_PROP,
   DEFAULT_ATTRIBUTE,
   SUPPORTED_ATTRIBUTES,
   OP_UNIQUE,
   OP_SELECT,
-  OP_WRITE_RECORDS
-} from './CONSTANTS';
+  OP_WRITE_RECORDS,
+} from './CONSTANTS.js';
 
 /**
  * runQuery - processes query against indices in mainCursor
@@ -76,8 +76,8 @@ export function getUnique(core, columnName, attribute) {
   }
 
   const attr = attribute || DEFAULT_ATTRIBUTE;
-  const aggregator = new UniqueSet();
-  const query = r => {
+  const aggregator = new UniqueKeySet();
+  const query = (r) => {
     aggregator.push(r[columnName][attr]);
   };
 
@@ -107,7 +107,7 @@ export function getExportObject(core, rawDataOnly) {
       () => true,
       true,
       true,
-      core.instanceOptions.exportAttributes
+      core.instanceOptions.exportAttributes,
     ).resultSet.values();
   } else {
     selected = clone(core.mainCursor.values());
@@ -118,7 +118,7 @@ export function getExportObject(core, rawDataOnly) {
     selected,
     rawData: rawDataOnly
       ? core.sheetAccessor.getDataPayload(core.instanceOptions.exportAttributes)
-      : false
+      : false,
   };
 }
 
@@ -128,7 +128,6 @@ export function insertRow(core, topOrBottom, dataObject) {
   }
   const position = core.sheetAccessor.insertRow(topOrBottom);
   if (dataObject) {
-    // eslint-disable-next-line no-param-reassign
     dataObject[INDEX_PROP] = position;
     runObjUpdate(core, [dataObject]);
   }

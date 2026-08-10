@@ -3,9 +3,9 @@
  * @return {Object}
  */
 
-import { Map, UniqueSet } from './map-unique';
-import { inArray } from './utilities';
-import { SUPPORTED_ATTRIBUTES, DEFAULT_ATTRIBUTE } from './CONSTANTS';
+import { KeyedMap, UniqueKeySet } from './keyed-map.js';
+import { inArray } from './utilities.js';
+import { SUPPORTED_ATTRIBUTES, DEFAULT_ATTRIBUTE } from './CONSTANTS.js';
 
 export class DataPayload {
   constructor(dataObject, headerRowIndex, headerColumnIndex, headerRow) {
@@ -16,7 +16,7 @@ export class DataPayload {
   }
 
   getDataIndex(columnName, attribute) {
-    const dataIndex = new Map();
+    const dataIndex = new KeyedMap();
 
     if (columnName === undefined && attribute === undefined) {
       this.dataObject[DEFAULT_ATTRIBUTE].forEach((row, index) => {
@@ -34,7 +34,6 @@ export class DataPayload {
         throw new Error(`failed to get dataIndex on invalid attribute ${attribute}.`);
       }
 
-      // eslint-disable-next-line prefer-destructuring
       const dataLength = this.dataObject[attr].length;
       for (let i = this.headerRowIndex + 1; i < dataLength; i += 1) {
         dataIndex.set(this.dataObject[attr][i][columnIndex], i);
@@ -46,7 +45,7 @@ export class DataPayload {
   }
 }
 
-export class AttributesSet extends UniqueSet {
+export class AttributesSet extends UniqueKeySet {
   push(attribute) {
     if (!inArray(attribute, SUPPORTED_ATTRIBUTES)) {
       throw new Error(`${attribute} is not a supported attribute.`);
@@ -55,7 +54,7 @@ export class AttributesSet extends UniqueSet {
   }
 
   withAll() {
-    SUPPORTED_ATTRIBUTES.forEach(attribute => {
+    SUPPORTED_ATTRIBUTES.forEach((attribute) => {
       this.push(attribute);
     });
     return this;

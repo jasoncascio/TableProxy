@@ -3,16 +3,16 @@
  * @param {Object} sheetAccessor - SheetAccessor instance
  * @param {Object} dataController - DataController instance
  * @param {Object} instanceOptions - InstanceOptions instance
- * @param {Object} requestedAttributesSet - UniqueSet instance
+ * @param {Object} requestedAttributesSet - AttributesSet instance
  * @return {Object} record proxy
  */
 
-import SheetAccessor from './sheet-accessor';
-import DataController from './data-controller';
-import InstanceOptions from './instance-options';
-import { AttributesSet } from './data-payload';
-import { inArray } from './utilities';
-import { INDEX_PROP } from './CONSTANTS';
+import SheetAccessor from './sheet-accessor.js';
+import DataController from './data-controller.js';
+import InstanceOptions from './instance-options.js';
+import { AttributesSet } from './data-payload.js';
+import { inArray } from './utilities.js';
+import { INDEX_PROP } from './CONSTANTS.js';
 
 export function getRecordProxy(core, dataController, requestedAttributesSet) {
   if (!(core.sheetAccessor instanceof SheetAccessor)) {
@@ -26,7 +26,7 @@ export function getRecordProxy(core, dataController, requestedAttributesSet) {
   }
   if (!(requestedAttributesSet instanceof AttributesSet)) {
     throw new Error(
-      `getRecordProxy requires an UniqueSet instance for input parameter requestedAttributesSet.`
+      `getRecordProxy requires an AttributesSet instance for input parameter requestedAttributesSet.`,
     );
   }
 
@@ -58,21 +58,21 @@ export function getRecordProxy(core, dataController, requestedAttributesSet) {
     enumerable: true,
     get: () => {
       return dataController.getRowIndex();
-    }
+    },
   });
 
   core.sheetAccessor.headerRow.forEach((column, columnIndex) => {
     if (columnIsValid(column)) {
       const columnProxy = {};
-      requestedAttributesSet.forEach(attribute => {
+      requestedAttributesSet.forEach((attribute) => {
         Object.defineProperty(columnProxy, attribute, {
           enumerable: true,
           get: () => {
             return dataController.getColumnByIndex(attribute, columnIndex);
           },
-          set: input => {
-            return dataController.updateColumnByIndex(attribute, columnIndex, input);
-          }
+          set: (input) => {
+            dataController.updateColumnByIndex(attribute, columnIndex, input);
+          },
         });
       });
 
@@ -81,15 +81,16 @@ export function getRecordProxy(core, dataController, requestedAttributesSet) {
   });
 
   try {
-    Object.keys(core.instanceOptions.computedProperties).forEach(key => {
+    Object.keys(core.instanceOptions.computedProperties).forEach((key) => {
       recordProxy[key] = Object.defineProperty({}, 'value', {
         enumerable: true,
-        get: core.instanceOptions.computedProperties[key].bind(recordProxy)
+        get: core.instanceOptions.computedProperties[key].bind(recordProxy),
       });
     });
   } catch (e) {
     throw new Error(
-      `there was a problem creating a record proxy with the specified computedProperties: ${e}`
+      `there was a problem creating a record proxy with the specified computedProperties: ${e}`,
+      { cause: e },
     );
   }
 
@@ -97,7 +98,7 @@ export function getRecordProxy(core, dataController, requestedAttributesSet) {
 }
 
 export function writeToRecordProxy(recordProxy, updateObject) {
-  Object.keys(recordProxy).forEach(columnName => {
+  Object.keys(recordProxy).forEach((columnName) => {
     if (Object.prototype.hasOwnProperty.call(updateObject, columnName)) {
       Object.assign(recordProxy[columnName], updateObject[columnName]);
     }

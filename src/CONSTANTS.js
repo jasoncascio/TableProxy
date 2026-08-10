@@ -2,9 +2,6 @@
  * CONSTANTS - various constants
  */
 
-// Test Toggle
-export const IS_TEST_MODE = false;
-
 /**
  * Exposed constants
  */
@@ -48,7 +45,7 @@ export const C = {
   BLACK: 'black',
   GREY: 'grey',
   YELLOW: 'yellow',
-  LIGHT_GREY: '#E5DEDE'
+  LIGHT_GREY: '#E5DEDE',
 };
 
 /**

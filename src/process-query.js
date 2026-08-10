@@ -3,21 +3,21 @@
  * @return {QueryReturn}
  */
 
-import QueryDriver from './query-driver';
-import SheetAccessor from './sheet-accessor';
-import DataController from './data-controller';
-import MainCursor from './main-cursor';
-import { getRecordProxy, writeToRecordProxy } from './record-proxy';
-import clone from './clone';
-import { inArray } from './utilities';
+import QueryDriver from './query-driver.js';
+import SheetAccessor from './sheet-accessor.js';
+import DataController from './data-controller.js';
+import MainCursor from './main-cursor.js';
+import { getRecordProxy, writeToRecordProxy } from './record-proxy.js';
+import clone from './clone.js';
+import { inArray } from './utilities.js';
 import {
   INDEX_PROP,
   OP_UNIQUE,
   OP_SELECT,
   OP_UPDATE,
   OP_WRITE_RECORDS,
-  SUPPORTED_OPS
-} from './CONSTANTS';
+  SUPPORTED_OPS,
+} from './CONSTANTS.js';
 
 export default function processQuery(core, queryDriver) {
   if (!(queryDriver instanceof QueryDriver)) {
@@ -39,7 +39,7 @@ export default function processQuery(core, queryDriver) {
   const dataController = new DataController(
     core.sheetAccessor,
     core.instanceOptions,
-    queryDriver.requestedAttributesSet
+    queryDriver.requestedAttributesSet,
   );
 
   /**
@@ -60,7 +60,7 @@ export default function processQuery(core, queryDriver) {
       let e;
       if (queryDriver.withSelect) {
         if (queryDriver.returnWithRecords) {
-          e = index => {
+          e = (index) => {
             dataController.setRowIndex(index);
             if (query(recordProxy, index)) {
               queryDriver.pushResult(index, clone(recordProxy));
@@ -70,7 +70,7 @@ export default function processQuery(core, queryDriver) {
             }
           };
         } else {
-          e = index => {
+          e = (index) => {
             dataController.setRowIndex(index);
             if (query(recordProxy, index)) {
               queryDriver.pushResult(index);
@@ -81,7 +81,7 @@ export default function processQuery(core, queryDriver) {
           };
         }
       } else {
-        e = index => {
+        e = (index) => {
           dataController.setRowIndex(index);
           query(recordProxy, index);
           if (dataController.wasRowUpdated()) {
@@ -92,7 +92,7 @@ export default function processQuery(core, queryDriver) {
       return e;
     })();
 
-    core.mainCursor.indices.forEach(index => {
+    core.mainCursor.indices.forEach((index) => {
       evaluator(index);
     });
   }
@@ -103,7 +103,6 @@ export default function processQuery(core, queryDriver) {
     let dataIndex;
 
     if (queryDriver.usesIndexProp) {
-      Logger.log(JSON.stringify(queryDriver.recordObjectsToWrite));
       matchCol = INDEX_PROP;
       matchAttr = null;
       dataIndex = dataController.getDataIndex();
@@ -120,21 +119,22 @@ export default function processQuery(core, queryDriver) {
     queryDriver.recordObjectsToWrite.forEach((record, index) => {
       let localIndex;
       if (!Object.prototype.hasOwnProperty.call(record, matchCol)) {
-        queryDriver.pushError(`input at index ${index} missing "${matchCol}" column.`);
+        queryDriver.pushError(index, `input at index ${index} missing "${matchCol}" column.`);
         return;
       }
 
       if (matchAttr) {
         if (!Object.prototype.hasOwnProperty.call(record[matchCol], matchAttr)) {
-          queryDriver.pushError(`input at index ${index} missing "${matchAttr}" attribute.`);
+          queryDriver.pushError(index, `input at index ${index} missing "${matchAttr}" attribute.`);
           return;
         }
         localIndex = dataIndex.get(record[matchCol][matchAttr]);
       } else {
         localIndex = dataIndex.get(record[matchCol]);
       }
-      if (!localIndex) {
-        queryDriver.pushWarning(`input at index ${index} had no match.`);
+      // Row index 0 is falsy but legitimate, so test for absence explicitly.
+      if (localIndex === undefined) {
+        queryDriver.pushWarning(index, `input at index ${index} had no match.`);
         return;
       }
 

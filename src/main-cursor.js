@@ -6,13 +6,13 @@
  * @return {MainCursor}
  */
 
-import { Map } from './map-unique';
-import SheetAccessor from './sheet-accessor';
-import { AttributesSet } from './data-payload';
-import QueryDriver from './query-driver';
-import { isNumeric } from './utilities';
+import { KeyedMap } from './keyed-map.js';
+import SheetAccessor from './sheet-accessor.js';
+import { AttributesSet } from './data-payload.js';
+import QueryDriver from './query-driver.js';
+import { isNumeric, typeTag } from './utilities.js';
 
-export default class MainCursor extends Map {
+export default class MainCursor extends KeyedMap {
   constructor(sheetAccessor) {
     super();
     if (!(sheetAccessor instanceof SheetAccessor)) {
@@ -32,6 +32,15 @@ export default class MainCursor extends Map {
     return this.dirty;
   }
 
+  /**
+   * @desc Without this setter, `mainCursor.isDirty = true` throws in strict
+   * @desc mode. index.js does exactly that in update, writeRecords,
+   * @desc setColumnFilter and setComputedProperties.
+   */
+  set isDirty(input) {
+    this.dirty = input === true;
+  }
+
   flush() {
     this.attributesSet.flush();
     this.dirty = true;
@@ -40,13 +49,13 @@ export default class MainCursor extends Map {
 
   setToIndices(indices) {
     this.dirty = true;
-    const indexer = new Map();
+    const indexer = new KeyedMap();
     indices.forEach((i, ind) => {
       if (isNumeric(i)) {
         indexer.set(i);
       } else {
         throw new Error(
-          `setToIndices can accept only numbers. Recieved ${toString.call(i)} at position ${ind}`
+          `setToIndices can accept only numbers. Recieved ${typeTag(i)} at position ${ind}`,
         );
       }
     });

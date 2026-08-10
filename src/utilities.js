@@ -3,39 +3,50 @@
  * @desc Various utilities
  */
 
-export const isDate1 = input => {
-  return toString.call(input) === '[object Date]';
+/**
+ * typeTag - the [[Class]] string for any value, e.g. '[object Date]'.
+ * @desc This used to be written as a bare `toString.call(x)`, which only worked
+ * @desc because sloppy-mode code picks `toString` off the global object. That is
+ * @desc a ReferenceError inside an ES module, so it is spelled out explicitly.
+ * @return {string}
+ */
+export const typeTag = (input) => {
+  return Object.prototype.toString.call(input);
 };
 
-export const isArray = input => {
-  return toString.call(input) === '[object Array]';
+export const isDate1 = (input) => {
+  return typeTag(input) === '[object Date]';
 };
 
-export const isString = input => {
-  return toString.call(input) === '[object String]';
+export const isArray = (input) => {
+  return typeTag(input) === '[object Array]';
 };
 
-export const isNumeric = input => {
-  return toString.call(input) === '[object Number]';
+export const isString = (input) => {
+  return typeTag(input) === '[object String]';
 };
 
-export const isFunction = input => {
-  return toString.call(input) === '[object Function]';
+export const isNumeric = (input) => {
+  return typeTag(input) === '[object Number]';
 };
 
-export const isObject = input => {
-  return toString.call(input) === '[object Object]' && input !== null && input !== undefined;
+export const isFunction = (input) => {
+  return typeTag(input) === '[object Function]';
 };
 
-export const isBoolean = input => {
-  return toString.call(input) === '[object Boolean]';
+export const isObject = (input) => {
+  return typeTag(input) === '[object Object]' && input !== null && input !== undefined;
 };
 
-export const isNull = input => {
+export const isBoolean = (input) => {
+  return typeTag(input) === '[object Boolean]';
+};
+
+export const isNull = (input) => {
   return input === null;
 };
 
-export const isUndefined = input => {
+export const isUndefined = (input) => {
   return input === undefined;
 };
 
@@ -43,8 +54,8 @@ export const inArray = (needle, haystack) => {
   return haystack.indexOf(needle) !== -1;
 };
 
-export const getType = input => {
-  const ts = toString.call(input);
+export const getType = (input) => {
+  const ts = typeTag(input);
   let type;
   switch (ts) {
     case '[object Boolean]':
@@ -72,7 +83,7 @@ export const getType = input => {
   return type;
 };
 
-export const toBool = value => {
+export const toBool = (value) => {
   switch (isString(value) ? value.toLowerCase() : value) {
     case true:
     case 'true':
@@ -86,11 +97,11 @@ export const toBool = value => {
   }
 };
 
-export const firstToUpper = string => {
+export const firstToUpper = (string) => {
   return string.charAt(0).toUpperCase() + string.slice(1);
 };
 
-export const getTimeStamp = precision => {
+export const getTimeStamp = (precision) => {
   const time = new Date().getTime();
   return precision ? time.toFixed(precision) : time;
 };
@@ -102,7 +113,7 @@ export const getTimeDiff = (oldTime, precision) => {
 
 export const strContains = (string, test) => {
   let contains = false;
-  (isArray(test) ? test : [test]).forEach(t => {
+  (isArray(test) ? test : [test]).forEach((t) => {
     if (string.indexOf(t) !== -1) {
       contains = true;
     }
@@ -112,30 +123,30 @@ export const strContains = (string, test) => {
 
 export const objAssign = (target, source, propsWritable) => {
   const writable = propsWritable === true;
-  Object.keys(source).forEach(sProp => {
+  Object.keys(source).forEach((sProp) => {
     Object.defineProperty(target, sProp, {
       enumerable: true,
       configurable: false,
       writable,
-      value: source[sProp]
+      value: source[sProp],
     });
   });
   return target;
 };
 
-export const isJson = str => {
+export const isJson = (str) => {
   if (!isString(str)) {
     return false;
   }
   try {
     JSON.parse(str);
-  } catch (e) {
+  } catch {
     return false;
   }
   return true;
 };
 
-export const toJson = obj => {
+export const toJson = (obj) => {
   return JSON.stringify(obj)
     .replace(/\\n/g, '\\n')
     .replace(/\\'/g, "\\'")
@@ -147,9 +158,9 @@ export const toJson = obj => {
     .replace(/\\f/g, '\\f');
 };
 
-export const isEmail = email => {
-  // eslint-disable-next-line no-useless-escape
-  const re = /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
+export const isEmail = (email) => {
+  const re =
+    /^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
   return re.test(String(email).toLowerCase());
 };
 
@@ -174,10 +185,15 @@ export const tokenInterpolate = (tokenizedString, record) => {
           .replace('{{!', '')
           .replace('}}', '')
           .split('.')
-          .reduce((o, j) => o[j], record)
+          .reduce((o, j) => o[j], record),
       );
     } catch (e) {
-      throw new Error(`tokenInterpolate failed "${tokenList[i]}" not in ${JSON.stringify(record)}`);
+      throw new Error(
+        `tokenInterpolate failed "${tokenList[i]}" not in ${JSON.stringify(record)}`,
+        {
+          cause: e,
+        },
+      );
     }
   }
   return result;

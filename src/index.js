@@ -1,28 +1,23 @@
 /**
  * Main
  */
-import { expSpreadsheetApp as SpreadsheetApp } from './simulation-utils';
-import InstanceOptions from './instance-options';
-import SheetAccessor from './sheet-accessor';
-import MainCursor from './main-cursor';
-import { Map, UniqueSet } from './map-unique';
+import InstanceOptions from './instance-options.js';
+import SheetAccessor from './sheet-accessor.js';
+import MainCursor from './main-cursor.js';
+import { KeyedMap } from './keyed-map.js';
 import {
   getUnique,
   runQuery,
   runObjUpdate,
   getExportObject,
   insertRow,
-  deleteRow
-} from './operations';
-import { objAssign, strContains, isArray } from './utilities';
-import Timer from './timer';
-import { Utils } from './sheets-utilities';
-import { IS_TEST_MODE, C, DEFAULT_ATTRIBUTE } from './CONSTANTS';
-import { AttributesSet } from './data-payload';
-
-if (IS_TEST_MODE) {
-  global.SpreadsheetApp = SpreadsheetApp;
-}
+  deleteRow,
+} from './operations.js';
+import { objAssign, strContains, isArray } from './utilities.js';
+import Timer from './timer.js';
+import { Utils } from './sheets-utilities.js';
+import { C, DEFAULT_ATTRIBUTE } from './CONSTANTS.js';
+import { AttributesSet } from './data-payload.js';
 
 const TableProxy = () => {
   function mount(sheetNameOrOptions, headerAnchorToken) {
@@ -30,12 +25,12 @@ const TableProxy = () => {
       const instanceOptions = new InstanceOptions(sheetNameOrOptions, headerAnchorToken);
       const sheetAccessor = new SheetAccessor(instanceOptions);
       const mainCursor = new MainCursor(sheetAccessor);
-      const lastResults = new Map();
+      const lastResults = new KeyedMap();
 
       const core = {
         instanceOptions,
         sheetAccessor,
-        mainCursor
+        mainCursor,
       };
 
       if (!instanceOptions.uniqueIdColumnName) {
@@ -60,7 +55,7 @@ const TableProxy = () => {
             .set('duration', timer.stop());
 
           return api;
-        }
+        },
       });
 
       Object.defineProperty(api, 'update', {
@@ -78,7 +73,7 @@ const TableProxy = () => {
             .set('duration', timer.stop());
 
           return api;
-        }
+        },
       });
 
       // needs enhancement
@@ -98,7 +93,7 @@ const TableProxy = () => {
             .set('duration', timer.stop());
 
           return api;
-        }
+        },
       });
 
       Object.defineProperty(api, 'writeCursor', {
@@ -116,7 +111,7 @@ const TableProxy = () => {
             .set('duration', timer.stop());
 
           return api;
-        }
+        },
       });
 
       Object.defineProperty(api, 'getRecords', {
@@ -135,7 +130,7 @@ const TableProxy = () => {
             .set('duration', timer.stop());
 
           return mainCursor.values();
-        }
+        },
       });
 
       Object.defineProperty(api, 'getUnique', {
@@ -151,7 +146,7 @@ const TableProxy = () => {
             .set('duration', timer.stop());
 
           return uniqueValues;
-        }
+        },
       });
 
       Object.defineProperty(api, 'flush', {
@@ -166,7 +161,7 @@ const TableProxy = () => {
             .set('duration', timer.stop());
 
           return api;
-        }
+        },
       });
 
       Object.defineProperty(api, 'insertRow', {
@@ -183,12 +178,12 @@ const TableProxy = () => {
             .set('duration', timer.stop());
 
           return api;
-        }
+        },
       });
 
       Object.defineProperty(api, 'deleteRow', {
         enumerable: true,
-        value: rowPosition => {
+        value: (rowPosition) => {
           const timer = new Timer(`API insertRow`);
           const position = deleteRow(core, rowPosition);
           mainCursor.flush();
@@ -200,12 +195,12 @@ const TableProxy = () => {
             .set('duration', timer.stop());
 
           return api;
-        }
+        },
       });
 
       Object.defineProperty(api, 'getExportObject', {
         enumerable: true,
-        value: rawDataOnly => {
+        value: (rawDataOnly) => {
           const timer = new Timer(`API getExportObject`);
           const exportObject = getExportObject(core, rawDataOnly);
           lastResults
@@ -215,16 +210,16 @@ const TableProxy = () => {
             .set('duration', timer.stop());
 
           return exportObject;
-        }
+        },
       });
 
       Object.defineProperty(api, 'loadSelectedRows', {
         enumerable: true,
-        value: attrSet => {
+        value: (attrSet) => {
           const timer = new Timer(`API loadSelectedRows`);
           const reqAttSet = new AttributesSet().push(DEFAULT_ATTRIBUTE);
           if (attrSet !== undefined) {
-            (isArray(attrSet) ? attrSet : [attrSet]).forEach(attr => {
+            (isArray(attrSet) ? attrSet : [attrSet]).forEach((attr) => {
               reqAttSet.push(attr);
             });
           }
@@ -239,7 +234,7 @@ const TableProxy = () => {
             .set('duration', timer.stop());
 
           return api;
-        }
+        },
       });
 
       Object.defineProperty(api, 'setRows', {
@@ -247,24 +242,26 @@ const TableProxy = () => {
         value: (indices, oneIndexed) => {
           const offset = oneIndexed === true ? 1 : 0;
           mainCursor.setToIndices(
-            (isArray(indices) ? indices : [indices]).map(index => index + offset)
+            (isArray(indices) ? indices : [indices]).map((index) => index + offset),
           );
           return api;
-        }
+        },
       });
 
       Object.defineProperty(api, 'getSelectedIndices', {
         enumerable: true,
-        value: asPos => {
-          return asPos === true ? mainCursor.keys().map(i => i + 1) : mainCursor.keys();
-        }
+        value: (asPos) => {
+          return asPos === true ? mainCursor.keys().map((i) => i + 1) : mainCursor.keys();
+        },
       });
 
       Object.defineProperty(api, 'selectionLength', {
         enumerable: true,
         value: () => {
-          return this.getSelectedIndices().length;
-        }
+          // `this` is not the api object inside an arrow function in a
+          // factory, so the previous implementation always threw.
+          return mainCursor.length;
+        },
       });
 
       Object.defineProperty(api, 'getFullDataIndex', {
@@ -282,28 +279,28 @@ const TableProxy = () => {
             .set('duration', timer.stop());
 
           return dataIndex;
-        }
+        },
       });
 
       Object.defineProperty(api, 'getHeaderRow', {
         enumerable: true,
         value: () => {
           return sheetAccessor.getHeaderRow();
-        }
+        },
       });
 
       Object.defineProperty(api, 'getOptions', {
         enumerable: true,
         value: () => {
           return instanceOptions.getSettingsExport();
-        }
+        },
       });
 
       Object.defineProperty(api, 'getLastResults', {
         enumerable: true,
         value: () => {
           return lastResults.entries();
-        }
+        },
       });
 
       /**
@@ -312,90 +309,90 @@ const TableProxy = () => {
       Object.defineProperties(api, {
         setSheetName: {
           enumerable: true,
-          value: input => {
+          value: (input) => {
             instanceOptions.sheetName = input;
             return api;
-          }
+          },
         },
         setColumnFilter: {
           enumerable: true,
-          value: input => {
+          value: (input) => {
             mainCursor.isDirty = true;
             instanceOptions.columnFilter = input;
             return api;
-          }
+          },
         },
         getColumnFilter: {
           enumerable: true,
           value: () => {
             return instanceOptions.columnFilter;
-          }
+          },
         },
         setExportAttributes: {
           enumerable: true,
-          value: input => {
+          value: (input) => {
             instanceOptions.exportAttributes = input;
             return api;
-          }
+          },
         },
         exportWithAllAttributes: {
           enumerable: true,
           value: () => {
             instanceOptions.exportWithAllAttributes();
             return api;
-          }
+          },
         },
         setReadLevel: {
           enumerable: true,
-          value: input => {
+          value: (input) => {
             instanceOptions.readLevel = input;
             return api;
-          }
+          },
         },
         setWriteLevel: {
           enumerable: true,
-          value: input => {
+          value: (input) => {
             instanceOptions.writeLevel = input;
             return api;
-          }
+          },
         },
         setAutoResizeColumns: {
           enumerable: true,
-          value: input => {
+          value: (input) => {
             instanceOptions.autoResizeColumns = input;
             return api;
-          }
+          },
         },
         setComputedProperties: {
           enumerable: true,
-          value: input => {
+          value: (input) => {
             mainCursor.isDirty = true;
             instanceOptions.computedProperties = input;
             return api;
-          }
+          },
         },
         setIdColumnName: {
           enumerable: true,
-          value: input => {
+          value: (input) => {
             instanceOptions.idColumnName = input;
             return api;
-          }
+          },
         },
         setIdAttributeName: {
           enumerable: true,
-          value: input => {
+          value: (input) => {
             instanceOptions.idAttributeName = input;
             return api;
-          }
-        }
+          },
+        },
       });
 
       return api;
     } catch (e) {
-      throw new Error(`TableProxy.mount failed: ${e}`);
+      throw new Error(`TableProxy.mount failed: ${e}`, { cause: e });
     }
   }
-  return objAssign({ mount, Map, UniqueSet, Timer, strContains }, C);
+  return objAssign({ mount, Timer, strContains }, C);
 };
 
 const $initTableProxy = function $initTableProxy(asName) {

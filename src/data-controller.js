@@ -2,20 +2,20 @@
  * DataController class
  * @param {Object} sheetAccessor - SheetAccessor instance
  * @param {Object} instanceOptions - InstanceOptions instance
- * @param {Object} requestedAttributes - UniqueSet instance
+ * @param {Object} requestedAttributesSet - AttributesSet instance
  */
 
-import SheetAccessor from './sheet-accessor';
-import InstanceOptions from './instance-options';
-import { AttributesSet } from './data-payload';
+import SheetAccessor from './sheet-accessor.js';
+import InstanceOptions from './instance-options.js';
+import { AttributesSet } from './data-payload.js';
 import {
   READ_LEVEL_ROW,
   READ_LEVEL_TABLE,
   WRITE_LEVEL_CELL,
   WRITE_LEVEL_ROW,
   WRITE_LEVEL_TABLE,
-  ATTR_NOTE
-} from './CONSTANTS';
+  ATTR_NOTE,
+} from './CONSTANTS.js';
 
 export default class DataController {
   constructor(sheetAccessor, instanceOptions, requestedAttributesSet) {
@@ -34,6 +34,15 @@ export default class DataController {
     this.headerAnchorToken = instanceOptions.headerAnchorToken;
     this.sheetAccessor = sheetAccessor;
     this.rowIndex = null;
+    /**
+     * Where the current row lives INSIDE dataPayload. Under READ_LEVEL_TABLE
+     * the payload holds the whole sheet, so this equals rowIndex. Under
+     * READ_LEVEL_ROW the payload holds a single row, so it is always 0.
+     * Every write path used to index the payload by the absolute rowIndex,
+     * which dereferenced undefined in row-read mode and made that mode
+     * readable but completely unwritable.
+     */
+    this.payloadRowIndex = null;
     this.requestedAttributesSet = requestedAttributesSet;
     this.changedAttributes = new AttributesSet();
     this.dataPayload = null;
@@ -84,19 +93,19 @@ export default class DataController {
   }
 
   getColumnByIndex2(attribute, columnIndex) {
-    return this.dataPayload.dataObject[attribute][this.rowIndex][columnIndex];
+    return this.dataPayload.dataObject[attribute][this.payloadRowIndex][columnIndex];
   }
 
   updateColumnByIndex1(attribute, columnIndex, updatedValue) {
     if (attribute === ATTR_NOTE) {
       if (updatedValue.indexOf(this.headerAnchorToken) !== -1) {
         throw new Error(
-          `${updatedValue} is a reserved value row ${this.rowIndex + 1}, column ${columnIndex + 1}.`
+          `${updatedValue} is a reserved value row ${this.rowIndex + 1}, column ${columnIndex + 1}.`,
         );
       }
     }
     this.rowUpdated = true;
-    this.dataPayload.dataObject[attribute][this.rowIndex][columnIndex] = updatedValue;
+    this.dataPayload.dataObject[attribute][this.payloadRowIndex][columnIndex] = updatedValue;
     this.sheetAccessor[attribute].setCell(this.rowIndex, columnIndex, [[updatedValue]]);
     return this;
   }
@@ -105,35 +114,38 @@ export default class DataController {
     if (attribute === ATTR_NOTE) {
       if (updatedValue.indexOf(this.headerAnchorToken) !== -1) {
         throw new Error(
-          `${updatedValue} is a reserved value row ${this.rowIndex + 1}, column ${columnIndex + 1}.`
+          `${updatedValue} is a reserved value row ${this.rowIndex + 1}, column ${columnIndex + 1}.`,
         );
       }
     }
     this.rowUpdated = true;
-    this.dataPayload.dataObject[attribute][this.rowIndex][columnIndex] = updatedValue;
+    this.dataPayload.dataObject[attribute][this.payloadRowIndex][columnIndex] = updatedValue;
     this.changedAttributes.push(attribute);
     return this;
   }
 
   updateColumnByIndex3(attribute, columnIndex, updatedValue) {
     this.rowUpdated = true;
-    this.dataPayload.dataObject[attribute][this.rowIndex][columnIndex] = updatedValue;
+    this.dataPayload.dataObject[attribute][this.payloadRowIndex][columnIndex] = updatedValue;
     this.sheetAccessor[attribute].setCell(this.rowIndex, columnIndex, [[updatedValue]]);
     return this;
   }
 
   updateColumnByIndex4(attribute, columnIndex, updatedValue) {
     this.rowUpdated = true;
-    this.dataPayload.dataObject[attribute][this.rowIndex][columnIndex] = updatedValue;
+    this.dataPayload.dataObject[attribute][this.payloadRowIndex][columnIndex] = updatedValue;
     this.changedAttributes.push(attribute);
     return this;
   }
 
   setRowIndex1(rowIndex) {
-    this.dataPayload = this.sheetAccessor.getDataPayload(this.requestedAttributesSet, rowIndex);
+    // Flush the PREVIOUS row before swapping in the next row's payload.
+    // Doing it the other way round wrote the incoming row's data back to the
+    // outgoing row's position.
     if (this.rowIndex !== null) {
       this.writeCurrentRow();
     }
+    this.dataPayload = this.sheetAccessor.getDataPayload(this.requestedAttributesSet, rowIndex);
     return this.setRowIndexBase(rowIndex);
   }
 
@@ -152,6 +164,7 @@ export default class DataController {
   setRowIndexBase(rowIndex) {
     this.rowUpdated = false;
     this.rowIndex = rowIndex;
+    this.payloadRowIndex = this.readLevel === READ_LEVEL_ROW ? 0 : rowIndex;
     return this;
   }
 
@@ -164,9 +177,9 @@ export default class DataController {
   }
 
   writeCurrentRow() {
-    this.changedAttributes.forEach(attribute => {
+    this.changedAttributes.forEach((attribute) => {
       this.sheetAccessor[attribute].setRow(this.rowIndex, [
-        this.dataPayload.dataObject[attribute][this.rowIndex]
+        this.dataPayload.dataObject[attribute][this.payloadRowIndex],
       ]);
     });
     this.changedAttributes.flush();
@@ -176,7 +189,7 @@ export default class DataController {
   capWrite() {
     this.rowUpdated = false;
     if (this.writeLevel === WRITE_LEVEL_TABLE) {
-      this.changedAttributes.forEach(attribute => {
+      this.changedAttributes.forEach((attribute) => {
         this.dataPayload.dataObject[attribute].splice(0, this.sheetAccessor.headerRowIndex + 1);
         this.sheetAccessor[attribute].setAllRecords(this.dataPayload.dataObject[attribute]);
       });

@@ -3,8 +3,8 @@
  * @desc Various Google Sheets utilities
  */
 
-import { expLogger as Logger } from './simulation-utils';
 import {
+  typeTag,
   isDate1,
   isArray,
   isString,
@@ -24,43 +24,59 @@ import {
   toJson,
   isEmail,
   tokenInterpolate,
-  getTokens
-} from './utilities';
-import { removeDuplicates, getDuplicates, testUnique } from './map-unique';
+  getTokens,
+} from './utilities.js';
+import { removeDuplicates, getDuplicates, testUnique } from './keyed-map.js';
 
-export const getSheetsObjectType = input => {
-  let returnType;
-  if (typeof input === 'object') {
-    try {
-      returnType = input.getGibberish(); // dummy method, throws error
-    } catch (e) {
-      returnType = e.message.split(' object ')[1].replace('.', ''); // extract type from error
-    }
+/**
+ * getSheetsObjectType - identify a Sheets service object by its methods.
+ * @desc This used to call a deliberately nonexistent method and scrape the type
+ * @desc out of the thrown message. That worked on Rhino, whose message read
+ * @desc "Cannot find function getGibberish in object Sheet." Under the V8
+ * @desc runtime the message is "...is not a function" and contains no
+ * @desc " object " at all, so the split produced undefined and the subsequent
+ * @desc .replace() threw. That took isSpreadsheet/isSheet/isRange down with it,
+ * @desc and through getShape, most of the named-range helpers too.
+ * @desc Duck-typing on characteristic methods is stable across runtimes.
+ * @return {string|undefined} 'Spreadsheet', 'Sheet', 'Range', or undefined
+ */
+export const getSheetsObjectType = (input) => {
+  if (input === null || typeof input !== 'object') {
+    return undefined;
   }
-  return returnType;
+  if (isFunction(input.getA1Notation)) {
+    return 'Range';
+  }
+  if (isFunction(input.getSheets)) {
+    return 'Spreadsheet';
+  }
+  if (isFunction(input.getRange) && isFunction(input.getName)) {
+    return 'Sheet';
+  }
+  return undefined;
 };
 
-export const isSpreadsheet = input => {
+export const isSpreadsheet = (input) => {
   return getSheetsObjectType(input) === 'Spreadsheet';
 };
 
-export const isSheet = input => {
+export const isSheet = (input) => {
   return getSheetsObjectType(input) === 'Sheet';
 };
 
-export const isRange = input => {
+export const isRange = (input) => {
   return getSheetsObjectType(input) === 'Range';
 };
 
-export const isSupportedType = input => {
+export const isSupportedType = (input) => {
   return (
     ['[object String]', '[object Number]', '[object Date]', '[object Boolean]'].indexOf(
-      toString.call(input)
+      typeTag(input),
     ) !== -1
   );
 };
 
-export const getShape = input => {
+export const getShape = (input) => {
   if (isArray(input)) {
     if (isArray(input[0])) {
       return `${input.length}x${input[0].length}`;
@@ -73,7 +89,7 @@ export const getShape = input => {
   }
 };
 
-export const log = input => {
+export const log = (input) => {
   Logger.log(input);
 };
 
@@ -87,24 +103,28 @@ export const getSelectedRowIndices = () => {
         const sr = r.getRow() - 1;
         const er = sr + r.getNumRows();
         for (let i = sr; i < er; i += 1) {
-          // eslint-disable-next-line no-param-reassign
           a[i] = true;
         }
         return a;
-      }, {})
-  ).map(k => Number(k));
+      }, {}),
+  ).map((k) => Number(k));
 };
 
-export const getSpreadsheet = spreadsheetId => {
+export const getSpreadsheet = (spreadsheetId) => {
   return spreadsheetId
     ? SpreadsheetApp.openById(spreadsheetId)
     : SpreadsheetApp.getActiveSpreadsheet();
 };
 
+/**
+ * getSheetIndex - position of a sheet within the spreadsheet, or -1.
+ * @desc Previously compared the Sheet OBJECT to the sheet NAME string, so it
+ * @desc could never match and always returned -1.
+ */
 export const getSheetIndex = (sheetName, spreadsheetId) => {
   const sheets = getSpreadsheet(spreadsheetId).getSheets();
   for (let i = 0; i < sheets.length; i += 1) {
-    if (sheets[i] === sheetName) {
+    if (sheets[i].getName() === sheetName) {
       return i;
     }
   }
@@ -119,8 +139,13 @@ export const getSheetByName = (sheetName, spreadsheetId) => {
   return sheet;
 };
 
+/**
+ * namedRangeExists - whether a named range is defined.
+ * @desc getRangeByName returns NULL for a missing name, not undefined, so the
+ * @desc old `!== undefined` test answered true for every input.
+ */
 export const namedRangeExists = (namedRange, spreadsheetId) => {
-  return getSpreadsheet(spreadsheetId).getRangeByName(namedRange) !== undefined;
+  return getSpreadsheet(spreadsheetId).getRangeByName(namedRange) != null;
 };
 
 export const getValueByName = (namedRange, spreadsheetId) => {
@@ -135,13 +160,13 @@ export const updateValueByName = (namedRange, value, spreadsheetId) => {
   const range = getSpreadsheet(spreadsheetId).getRangeByName(namedRange);
   if (!range) {
     throw new Error(
-      `updateValueByName failed because the namedRange "${namedRange}" does not exist.`
+      `updateValueByName failed because the namedRange "${namedRange}" does not exist.`,
     );
   }
   if (range.isPartOfMerge()) {
     if (!isString(value)) {
       throw new Error(
-        `updateValueByName - range to update is merged, update value must be a string.`
+        `updateValueByName - range to update is merged, update value must be a string.`,
       );
     }
     range.setValue(value);
@@ -179,11 +204,11 @@ export const getCoordinatesByName = (namedRange, spreadsheetId) => {
     startRow: range.getRow(),
     endRow: range.getLastRow(),
     startCol: range.getColumn(),
-    endCol: range.getLastColumn()
+    endCol: range.getLastColumn(),
   };
 };
 
-export const getNamedRangesObject = spreadsheetId => {
+export const getNamedRangesObject = (spreadsheetId) => {
   return getSpreadsheet(spreadsheetId)
     .getNamedRanges()
     .reduce((retObj, namedRange) => {
@@ -194,14 +219,14 @@ export const getNamedRangesObject = spreadsheetId => {
         getter = () => {
           return range.getValue();
         };
-        setter = input => {
+        setter = (input) => {
           return range.setValue(input);
         };
       } else {
         getter = () => {
           return range.getValues();
         };
-        setter = input => {
+        setter = (input) => {
           return range.setValues(input);
         };
       }
@@ -209,26 +234,28 @@ export const getNamedRangesObject = spreadsheetId => {
         enumerable: true,
         configurable: false,
         get: getter,
-        set: setter
+        set: setter,
       });
       return retObj;
     }, {});
 };
 
-export const getSheet = sheetOrSheetName => {
+export const getSheet = (sheetOrSheetName) => {
   if (isString(sheetOrSheetName)) {
     try {
       return getSheetByName(sheetOrSheetName);
     } catch (e) {
-      throw new Error(`getSheet could not retrieve sheet with name "${sheetOrSheetName}".`);
+      throw new Error(`getSheet could not retrieve sheet with name "${sheetOrSheetName}".`, {
+        cause: e,
+      });
     }
   } else if (isSheet(sheetOrSheetName)) {
     return sheetOrSheetName;
   } else {
     throw new Error(
       `getSheet called with invalid sheetOrSheetName data type: "${getSheetsObjectType(
-        sheetOrSheetName
-      )}".`
+        sheetOrSheetName,
+      )}".`,
     );
   }
 };
@@ -237,7 +264,7 @@ export const sendEmail = (to, subject, body, htmlBody) => {
   const msgObj = {
     to: isArray(to) ? to.join(',') : to,
     subject,
-    body
+    body,
   };
   if (htmlBody !== undefined) {
     msgObj.htmlBody = htmlBody;
@@ -284,5 +311,5 @@ export const Utils = {
   getTokens,
   removeDuplicates,
   getDuplicates,
-  testUnique
+  testUnique,
 };

@@ -3,8 +3,8 @@
  * @return {Object}
  */
 
-import { getTimeStamp, getTimeDiff, isString } from './utilities';
-import { log } from './sheets-utilities';
+import { getTimeStamp, getTimeDiff, isString } from './utilities.js';
+import { log } from './sheets-utilities.js';
 
 export default class Timer {
   constructor(text, suppressLogStart) {

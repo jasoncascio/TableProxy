@@ -3,11 +3,11 @@
  * @return {Object}
  */
 
-import { INDEX_PROP, SUPPORTED_ATTRIBUTES } from './CONSTANTS';
-import { Map } from './map-unique';
-import { AttributesSet } from './data-payload';
-import Timer from './timer';
-import { isFunction, inArray, isArray, isObject } from './utilities';
+import { INDEX_PROP, SUPPORTED_ATTRIBUTES } from './CONSTANTS.js';
+import { KeyedMap } from './keyed-map.js';
+import { AttributesSet } from './data-payload.js';
+import Timer from './timer.js';
+import { isFunction, inArray, isArray, isObject, typeTag } from './utilities.js';
 
 export default class QueryDriver {
   constructor(type, noteForLogging) {
@@ -20,13 +20,13 @@ export default class QueryDriver {
     this.matchAttributeName = null;
     this.recordObjectsToWrite = null;
     this.usesIndexProp = false;
-    this.otherResults = new Map();
+    this.otherResults = new KeyedMap();
     this.noteForLogging = noteForLogging;
 
     this.timer = new Timer(`${this.getTimerText()}`);
-    this.resultSet = new Map();
-    this.errors = new Map();
-    this.warnings = new Map();
+    this.resultSet = new KeyedMap();
+    this.errors = new KeyedMap();
+    this.warnings = new KeyedMap();
     this.updatedRecordIndices = [];
   }
 
@@ -42,7 +42,7 @@ export default class QueryDriver {
     }
     this.query = query;
     const queryAsString = query.toString();
-    SUPPORTED_ATTRIBUTES.forEach(attribute => {
+    SUPPORTED_ATTRIBUTES.forEach((attribute) => {
       const re1 = new RegExp(`[[]{1}['|"]{1}${attribute}['|"]{1}[]]{1}`, 'g');
       const re2 = new RegExp(`[.]{1}${attribute}[^a-zA-Z0-9]`, 'g');
       if (re1.test(queryAsString) || re2.test(queryAsString)) {
@@ -71,13 +71,11 @@ export default class QueryDriver {
     }
     arrayOfRecords.forEach((record, index) => {
       if (!isObject(record)) {
-        throw new TypeError(
-          `record object array contained ${toString.call(record)} at index ${index}.`
-        );
+        throw new TypeError(`record object array contained ${typeTag(record)} at index ${index}.`);
       }
     });
     const json = JSON.stringify(arrayOfRecords);
-    SUPPORTED_ATTRIBUTES.forEach(attribute => {
+    SUPPORTED_ATTRIBUTES.forEach((attribute) => {
       if (new RegExp(`"${attribute}":`, 'g').test(json)) {
         this.requestedAttributesSet.push(attribute);
       }
@@ -127,7 +125,7 @@ export default class QueryDriver {
   }
 
   get updatedIndices() {
-    return this.updatedRecordIndices.map(i => i);
+    return this.updatedRecordIndices.map((i) => i);
   }
 
   pushResult(index, record) {
