@@ -46,6 +46,31 @@ being rebuilt per row. That mattered: it defines one property per column per req
 a 50-column sheet costs 50 definitions for a query touching only `value` and up to 450 if all nine
 are in play. Rebuilding that for each of 5,000 rows would have dominated the run.
 
+That optimization has a consequence I don't think I fully appreciated at the time. **Every row in a
+query sees the same object.** Not an equivalent one — the same one:
+
+```js
+const seen = [];
+table.select((r) => {
+  seen.push(r);
+  return false;
+});
+
+seen.length; // 3
+seen.every((o) => o === seen[0]); // true
+```
+
+Which means anything you keep a reference to during a query is a live view of wherever the cursor
+happens to be now, not the row you saw it on. That's why `process-query.js` snapshots with
+`clone(recordProxy)` before pushing a result. Drop that single call and every record returned from a
+query would report the last row's data, three times over — a bug that would look like a data problem
+rather than an aliasing problem, and would be miserable to find.
+
+Records also carry a reserved `' index '` property holding their row index, defined before the
+columns are. The leading and trailing spaces are the point: header names are trimmed on the way in,
+so no real column can produce that string. It's a namespace reserved by picking a key the data
+can't generate. Convention rather than enforcement — but it costs nothing and it works.
+
 It's built from `defineProperty` because Rhino had no `Proxy`. Apps Script's V8 runtime has `Proxy`
 now, and a trap-based version would be shorter and handle columns that appear at runtime. I've kept
 the original — it works, it's covered by tests, and it's what the project actually is.
@@ -142,8 +167,22 @@ cannot see through indirection: `r[col][attr]` with variables matches nothing. T
 hypothetical — `getUnique` builds exactly such a query and has to call `.addAttribute(attr)`
 explicitly to compensate. Anything that stringifies differently would break it.
 
-I'd still make the same call. The alternative is asking callers to declare their attributes up
-front, and they would get it wrong constantly, in the direction of silently reading nothing.
+The sharpest edge is that a query mentioning no attribute at all reads nothing at all:
+
+```js
+table.select(() => true, true).getRecords();
+// -> records whose columns are empty objects. Nothing was fetched,
+//    because nothing in the source said `.value`.
+```
+
+That is consistent — it fetched precisely what the query asked for, which was nothing — but it looks
+like data loss. The library papers over it where it can (`loadSelectedRows` forces `value` in,
+`getExportObject` passes the configured export attributes explicitly), and a "select everything"
+call is exactly the case where a caller wouldn't think to mention an attribute. If I were adding one
+thing here it would be a floor: never resolve to an empty attribute set, fall back to `value`.
+
+I'd still make the same call overall. The alternative is asking callers to declare their attributes
+up front, and they would get it wrong constantly — in this same direction, silently reading nothing.
 
 ## Batching: read and write levels
 
@@ -187,6 +226,32 @@ want. I later learned this shape is usually called the Strategy pattern.
 The discomfort in that comment was also right, for a different reason than I understood at the time.
 Six numbered near-identical methods with no test coverage is a place bugs hide, and one did: the
 `READ_LEVEL_ROW` write paths never worked at all. See below.
+
+The same instinct shows up again in `process-query.js`, which builds the per-row evaluator once from
+an immediately-invoked function and then loops over a closure with no branches left in it:
+
+```js
+const evaluator = (function getEvaluator() {
+  if (queryDriver.withSelect) {
+    if (queryDriver.returnWithRecords) {
+      return (index) => {
+        /* select, with records */
+      };
+    }
+    return (index) => {
+      /* select, without */
+    };
+  }
+  return (index) => {
+    /* update */
+  };
+})();
+
+core.mainCursor.indices.forEach((index) => evaluator(index));
+```
+
+Two flags that are fixed for the whole run get resolved once instead of being re-tested thousands of
+times. Appearing twice in unrelated files suggests it was a deliberate habit rather than a one-off.
 
 ## Generating the accessors
 
@@ -233,6 +298,60 @@ TP.mount('Invoices', 'HEADER_ANCHOR');
 Notes are invisible to anyone reading the sheet and survive re-sorting, inserted rows, and renamed
 columns — they attach to the cell, not the position. Using an existing attribute as out-of-band
 metadata felt like a small trick at the time; it's held up better than most of what's here.
+
+## What's immutable, and one thing that should have been
+
+An instance is welded to its sheet. `spreadsheetId`, `sheetName` and `headerAnchorToken` all throw
+if set twice:
+
+```js
+table.setSheetName('Other');
+// Error: sheetName was already set to Invoices and cannot be changed.
+```
+
+That's deliberate, and I think right. A mounted table has a header row, a cursor full of row
+indices, and a cached shape, all of which describe _that_ sheet. Re-pointing it would leave every
+one of them silently wrong. Refusing is better than the alternative, which is a table that reads
+from one sheet and writes to another.
+
+The wart is that `setSheetName` is still exposed on the public API, where it can only ever throw
+once mounting has happened — which is always. It's a method that cannot succeed.
+
+The exported constants are locked down properly, via `objAssign` defining them non-writable and
+non-configurable, so nobody can reassign `TP.WT` out from under the library. But there's a gap I
+only found by checking the descriptors:
+
+| Property                          | writable |
+| --------------------------------- | -------- |
+| `TP.WT`, `TP.RT`, `TP.SUCCESS`, … | `false`  |
+| `TP.mount`                        | `true`   |
+| `TP.Timer`, `TP.strContains`      | `true`   |
+
+`objAssign(target, source)` only hardens what comes from `source`. `mount` is part of the target
+object literal, so it stays an ordinary writable property. The colour constants are protected and
+the entry point isn't — exactly backwards. Nothing has ever depended on it, and I've left the
+behaviour alone rather than change a public contract in a documentation pass, but it's the sort of
+thing that reads as intentional until you check.
+
+## Timing everything
+
+Every operation is wrapped in a `Timer`, and `getLastResults()` hands back what the last call did
+along with how long it took:
+
+```js
+table.select((r) => r.region.value === 'West').getLastResults();
+// [['operation', 'select'], ['completed', true], ['selected count', 42],
+//  ['updated row count', 0], ['updated row indices', []], ['duration', 118]]
+```
+
+Apps Script kills a script at six minutes with nothing useful to say about where the time went, and
+in 2019 there was no profiler worth the name. Building the measurement in — and logging the query's
+own source alongside its duration, via `timer.stop(this.query.toString())` — was the only way to
+find out which query was the expensive one.
+
+It's the same reasoning that led me to instrument the test fake with API call counting during the
+2026 pass, which is how every performance number in this document was produced. Measuring instead of
+guessing was apparently the one good habit I had at the start.
 
 ## Patterns I didn't know I was using
 
