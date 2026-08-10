@@ -463,6 +463,45 @@ workarounds are legible in its first fifty lines — see [`attic/README.md`](./a
 also still carrying a `Browser.msgBox` I left in an error path while debugging, which is its own kind
 of documentation.
 
+## A stray thought: a query interface
+
+Not a plan, and nothing here is being built. Writing the API reference made it obvious how much of a
+query engine is already sitting in this code under different names, and that's worth recording before
+I forget it.
+
+`select` is `WHERE`. `update` is `SET`. `columnFilter` is the projection list. `getUnique` is
+`SELECT DISTINCT`. `writeRecords` matched on an id column is `UPDATE … WHERE id = ?`.
+`getFullDataIndex` is a unique index, `isUnique` flag and all. The read and write levels are the
+cost knobs a planner would want, already explicit. `ORDER BY`, `LIMIT` and the aggregates are
+in-memory work over an array that's already materialized.
+
+Two things would genuinely improve if queries were parsed rather than written as JS. A parsed
+predicate isn't opaque, so the attribute set could be computed exactly instead of inferred by
+stringifying a function and matching regexes — the hack in [Working out what to
+read](#working-out-what-to-read) exists only because a function tells you nothing. And chained
+`select` calls are AND-only; `a = 1 OR (b > 2 AND c <> '')` isn't expressible today.
+
+What stops it from being a small job isn't the parser, it's the model. A table is bound to one sheet
+with one accessor and one cursor keyed by sheet row index, so a joined row has nothing to be a proxy
+_of_ — joins would return plain objects and would be read-only, which is the rule SQL already applies
+to non-updatable views but has to be said out loud here. `NULL` has no counterpart: Sheets hands back
+`''` for an empty cell, and `KeyedMap` refuses keys that aren't string, number, boolean or date, so
+three-valued logic would be invented from nothing. `UPDATE` on a formula column silently destroys the
+formula, and SQL syntax makes that feel safer than it is. `WT` looks like a transaction and isn't —
+no rollback, no `LockService`. And there's no npm at runtime, so a real parser dependency can't be
+bundled; it would have to be hand-written.
+
+If I ever did want this, I'd build the fluent version first — `.where(col, op, value).orderBy(…)` —
+because it produces the same tree a parser would, costs no bundle size, and forces every hard
+semantic question above to be answered anyway. A text dialect could compile down to it later. The
+only thing the fluent form can't do is take a query as _data_, from a config cell or a sidebar, and
+if that ever turns out to be the actual reason for wanting this, the parser stops being decoration.
+
+The dialect question I'd have to settle first: `.` is taken by SQL's table qualifier, so
+`BACKGROUND(status)` reads well in a `WHERE` and has nowhere to go on the left of a `SET`. That
+asymmetry is the tell that it wouldn't be SQL, just something shaped like it — which users would
+either forgive or resent, and I don't know which.
+
 ## What held up
 
 The parts I'd keep unchanged: attributes as first-class data, the record proxy, and making batching
