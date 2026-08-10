@@ -1,0 +1,7 @@
+node_modules
+dist
+coverage
+data
+
+# Historical artifact — must stay byte-identical to the 2019 original.
+attic/*.js

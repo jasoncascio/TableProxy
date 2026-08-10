@@ -43,7 +43,10 @@ const appsScriptGlobals = {
 
 export default [
   {
-    ignores: ['dist/**', 'node_modules/**', 'coverage/**', 'data/**'],
+    // attic/ holds a historical artifact kept byte-identical to its 2019
+    // original. It is not built, shipped or tested, and it would fail every
+    // rule here — which is rather the point.
+    ignores: ['dist/**', 'node_modules/**', 'coverage/**', 'data/**', 'attic/**'],
   },
   js.configs.recommended,
   {

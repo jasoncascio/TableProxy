@@ -441,6 +441,12 @@ keys to tagged primitives over a native `Map` to keep the old semantics.
 An accident of the 2019 implementation turned out to be load-bearing. Worth remembering before
 replacing anything that looks obviously outdated.
 
+The original is kept at [`attic/map-unique-2019.js`](./attic/map-unique-2019.js), byte-identical and
+excluded from the build, the linter and the tests. Four platform constraints and their four
+workarounds are legible in its first fifty lines — see [`attic/README.md`](./attic/README.md). It is
+also still carrying a `Browser.msgBox` I left in an error path while debugging, which is its own kind
+of documentation.
+
 ## What held up
 
 The parts I'd keep unchanged: attributes as first-class data, the record proxy, and making batching
