@@ -233,7 +233,7 @@ his [apps-script-starter](https://github.com/labnol/apps-script-starter).
 
 ## Contact
 
-Jason Cascio — [12jac26@gmail.com](mailto:12jac26@gmail.com) · [github.com/jac1226](https://github.com/jac1226)
+Jason Cascio — [12jac26@gmail.com](mailto:12jac26@gmail.com) · [github.com/jasoncascio](https://github.com/jasoncascio)
 
 ## License
 

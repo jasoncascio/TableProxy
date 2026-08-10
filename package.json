@@ -5,9 +5,9 @@
   "author": {
     "name": "Jason Cascio",
     "email": "12jac26@gmail.com",
-    "url": "https://github.com/jac1226/TableProxy/"
+    "url": "https://github.com/jasoncascio/TableProxy/"
   },
-  "homepage": "https://github.com/jac1226/TableProxy/",
+  "homepage": "https://github.com/jasoncascio/TableProxy/",
   "license": "MIT",
   "main": "src/index.js",
   "type": "module",
@@ -28,7 +28,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jac1226/TableProxy.git"
+    "url": "git+https://github.com/jasoncascio/TableProxy.git"
   },
   "keywords": [
     "google-apps-script",
