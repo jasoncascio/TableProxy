@@ -50,6 +50,69 @@ It's built from `defineProperty` because Rhino had no `Proxy`. Apps Script's V8 
 now, and a trap-based version would be shorter and handle columns that appear at runtime. I've kept
 the original — it works, it's covered by tests, and it's what the project actually is.
 
+## The same trick, one level up: named ranges
+
+`getNamedRangesObject` in `src/sheets-utilities.js` applies the identical idea at a different scale.
+Instead of columns on a row, it turns every **named range in the spreadsheet** into a property on a
+plain object:
+
+```js
+const config = U.getNamedRangesObject();
+
+config.taxRate; // 0.08   — reads the cell, right now
+config.taxRate = 0.11; // writes it
+```
+
+A "Settings" sheet with named cells becomes a config object. No loading step, no sync step, no stale
+copy to invalidate — the object _is_ the sheet.
+
+Two details worth pointing at. First, the accessor adapts to the range's shape, decided once when
+the object is built rather than on every access:
+
+```js
+if (getShape(range) === '1x1' || range.isPartOfMerge()) {
+  getter = () => range.getValue(); // scalar
+} else {
+  getter = () => range.getValues(); // 2d array
+}
+```
+
+So `config.taxRate` hands back a number while `config.rateTable` hands back a grid, which is what
+you'd want in both cases. Merged ranges are folded in with the 1×1 case because `getValues()` on a
+merge returns the whole block padded with blanks.
+
+Second, the properties are `enumerable: true, configurable: false` — they show up in `Object.keys`,
+but can't be deleted or redefined out from under you.
+
+**The cost model is the interesting part, and it cuts both ways.** Measured against the fake:
+
+| Operation                            | Round trips |
+| ------------------------------------ | ----------: |
+| Building the object (2 named ranges) |           6 |
+| Reading one property                 |           1 |
+| Reading the same property five times |           5 |
+| `JSON.stringify(config)`             |           2 |
+
+Building it reads no cell values at all — it costs one `getNamedRanges()` plus a `getRange()` each,
+and nothing more. Everything is deferred to access. On a spreadsheet with forty named ranges where
+you need two of them, that's the right trade by a wide margin.
+
+But there is no caching, so reading the same property in a loop is a round trip per iteration. And
+because the properties are enumerable getters, `JSON.stringify(config)` — or anything else that
+walks the object — silently fires one API call per named range. It looks like touching a plain
+object and it isn't. I'd add memoization with an explicit `refresh()` if I were doing it again; the
+laziness is right, the absence of any cache is not.
+
+One more caveat I only noticed while writing this up: each accessor closes over the `Range` object
+resolved at build time, so it captures the range's _coordinates_. If someone redefines the named
+range to point somewhere else afterwards, the object keeps writing to the old location. Rebuild it
+if the sheet's structure can change underneath you.
+
+This function was also completely dead under V8 until the 2026 pass, for a reason that had nothing
+to do with it: it calls `getShape`, which calls `isRange`, which called the broken
+`getSheetsObjectType`. One bad line took down one of the better ideas in the codebase, in a file two
+levels away.
+
 ## Working out what to read
 
 This is the piece I'd point at first.
@@ -170,6 +233,47 @@ TP.mount('Invoices', 'HEADER_ANCHOR');
 Notes are invisible to anyone reading the sheet and survive re-sorting, inserted rows, and renamed
 columns — they attach to the cell, not the position. Using an existing attribute as out-of-band
 metadata felt like a small trick at the time; it's held up better than most of what's here.
+
+## Patterns I didn't know I was using
+
+I wrote all of this without having read anything about design patterns. Going back through it years
+later, a lot of it has names.
+
+That is not a claim to have invented anything. Patterns get catalogued precisely _because_ people
+keep arriving at them independently — that's what makes them worth writing down. What's actually
+interesting is which constraint forced which shape, and Apps Script's constraint is always the same
+one: crossing into the Sheets service is expensive, so don't.
+
+| What it's called                  | Where                                                    | What forced it                                                                  |
+| --------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| **Virtual Proxy** / **Lazy Load** | `record-proxy.js`, `getNamedRangesObject`                | Reading a cell must not happen until somebody asks for it                       |
+| **Unit of Work**                  | `WRITE_LEVEL_TABLE` — `changedAttributes` + `capWrite()` | Batch every mutation and commit once, because 200 writes cost 200 round trips   |
+| **Strategy**                      | `data-controller.js` binding its methods up front        | The read/write level can't change mid-run, so don't re-test it per row          |
+| **Builder**                       | `QueryDriver`'s chained `setX()` returning `this`        | A query needs assembling from several optional parts before it runs             |
+| **Fluent interface**              | `select().select().update()`                             | Narrowing a selection reads better as a chain                                   |
+| **Facade**                        | the `api` object from `mount()`, and `Utils`             | Hide `SheetAccessor` / `DataController` / `QueryDriver` behind something usable |
+| **Adapter**                       | the 108 generated accessors                              | Turn nine differently-named Sheets method pairs into one uniform interface      |
+
+Two more are partial matches, and the qualification matters:
+
+- **Active Record**, sort of. `row.status.value = 'paid'` persists itself, which is the essence of
+  it — but a real Active Record owns its `save()`. Here persistence is delegated to
+  `DataController`, so it's a record object with write-through semantics rather than the pattern
+  proper.
+- **Identity Map**, loosely. `DataPayload.getDataIndex` builds a key-column → row-index lookup so
+  `writeRecords` doesn't re-scan per record. It fills the same role but makes none of the guarantees
+  a real Identity Map does — nothing ensures one object per row.
+
+And the honest conclusion, which is the reason this section is worth writing at all:
+
+**Arriving at the shape is the easy half.** What I was missing wasn't the diagram, it was the
+discipline that comes with it. A Strategy implementation done properly has one interface that every
+strategy satisfies; mine was six numbered methods with nothing enforcing that they behaved alike, and
+two of them — the `READ_LEVEL_ROW` write paths — turned out never to have worked. A shared contract,
+or simply a test per strategy, would have caught that in 2019 instead of 2026. My Unit of Work has no
+transaction boundary and no rollback: if `capWrite()` fails halfway, the sheet is left half-written
+and nothing knows. The literature doesn't just hand you the structure, it hands you the failure modes
+other people already hit.
 
 ---
 
